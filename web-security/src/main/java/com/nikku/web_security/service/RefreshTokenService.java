@@ -3,8 +3,10 @@ package com.nikku.web_security.service;
 import com.nikku.web_security.entity.RefreshToken;
 import com.nikku.web_security.entity.User;
 import com.nikku.web_security.repository.RefreshTokenRepository;
+
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -15,9 +17,8 @@ public class RefreshTokenService {
 
     private final RefreshTokenRepository repository;
 
-    public RefreshToken createRefreshToken(
-            User user,
-            String tokenValue) {
+    // 🔹 Create Refresh Token
+    public RefreshToken createRefreshToken(User user, String tokenValue) {
 
         RefreshToken token = RefreshToken.builder()
                 .token(tokenValue)
@@ -29,38 +30,47 @@ public class RefreshTokenService {
         return repository.save(token);
     }
 
-    public RefreshToken verifyToken(String token) {
+    // 🔹 Verify Refresh Token
+    public RefreshToken verifyRefreshToken(String tokenValue) {
 
-        RefreshToken refreshToken =
-                repository.findByToken(token)
-                        .orElseThrow(() ->
-                                new RuntimeException("Invalid refresh token"));
+        RefreshToken refreshToken = repository.findByToken(tokenValue)
+                .orElseThrow(() ->
+                        new AuthenticationServiceException("Invalid refresh token"));
 
         if (refreshToken.isRevoked()) {
-            throw new RuntimeException("Token revoked");
+            throw new AuthenticationServiceException("Refresh token revoked");
         }
 
-        if (refreshToken.getExpiryDate()
-                .isBefore(LocalDateTime.now())) {
-            throw new RuntimeException("Token expired");
+        if (refreshToken.getExpiryDate().isBefore(LocalDateTime.now())) {
+            throw new AuthenticationServiceException("Refresh token expired");
         }
 
         return refreshToken;
     }
 
+    // 🔹 Revoke Token (Logout)
+    @Transactional
+    public void revokeToken(String tokenValue) {
 
-        @Transactional
-        public void revokeToken(String refreshToken) {
+        RefreshToken token = repository.findByToken(tokenValue)
+                .orElseThrow(() ->
+                        new AuthenticationServiceException("Refresh token not found"));
 
-            RefreshToken token = repository
-                    .findByToken(refreshToken)
-                    .orElseThrow(() ->
-                            new RuntimeException("Token not found"));
+        token.setRevoked(true);
 
-            token.setRevoked(true);
+        // No need to call save() explicitly inside @Transactional
+    }
 
-            repository.save(token);
+    // 🔹 Optional: Delete all tokens of a user (Logout from all devices)
+    // @Transactional
+    // public void revokeAllUserTokens(User user) {
+    //     repository.findAllByUser(user)
+    //             .forEach(token -> token.setRevoked(true));
+    // }
 
-            System.out.println("TOKEN REVOKED");
-        }
+    // // 🔹 Optional: Clean expired tokens (can be scheduled)
+    // @Transactional
+    // public void deleteExpiredTokens() {
+    //     repository.deleteByExpiryDateBefore(LocalDateTime.now());
+    // }
 }

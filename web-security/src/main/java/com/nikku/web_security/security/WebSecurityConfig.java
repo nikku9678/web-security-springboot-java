@@ -10,7 +10,12 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.servlet.HandlerExceptionResolver;
+
+import java.util.List;
 
 @Configuration
 @RequiredArgsConstructor
@@ -22,39 +27,45 @@ public class WebSecurityConfig {
     private final OAuth2SuccessHandler oAuth2SuccessHandler;
     private final HandlerExceptionResolver handlerExceptionResolver;
 
+    private static final String[] publicRoutes = {
+            "/error", "/auth/**", "/home.html", "/demo/**"
+    };
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
         http
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
-                .sessionManagement(sess ->
-                        sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-
+                .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(publicRoutes).permitAll()
+                        .requestMatchers("/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/public/**").hasRole("USER")
+                        .anyRequest().authenticated());
 
-                        // Public
-                        .requestMatchers("/auth/**").permitAll()
-
-                        // Role based
-                        .requestMatchers("/admin/**")
-                        .hasRole("ADMIN")
-
-                        // Privilege based
-                        .requestMatchers(HttpMethod.DELETE, "/users/**")
-                        .hasAuthority("USER_DELETE")
-
-                        .requestMatchers(HttpMethod.GET, "/users/**")
-                        .hasAuthority("USER_READ")
-
-                        // Mixed
-                        .requestMatchers("/appointments/create")
-                        .hasAnyAuthority("APPOINTMENT_CREATE", "ROLE_ADMIN")
-
-                        .anyRequest().authenticated()
-                );
+        http.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
 
+    // ✅ ADD THIS METHOD
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
 
+        CorsConfiguration configuration = new CorsConfiguration();
+
+        configuration.setAllowedOrigins(List.of("http://localhost:5173"));
+        // If using CRA use: http://localhost:3000
+
+        configuration.setAllowedMethods(List.of("*"));
+        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+
+        source.registerCorsConfiguration("/**", configuration);
+
+        return source;
+    }
 }
